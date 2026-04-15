@@ -28,6 +28,6 @@ function handleEvent(event) {
   });
 }
 
-app.listen(3000, () => {
-  console.log('Server running...');
+app.listen(port, () => {
+  console.log('Server is running on port ${PORT}');
 });
