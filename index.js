@@ -9,98 +9,54 @@ const config = {
   channelSecret: process.env.CHANNEL_SECRET
 };
 
-const client = new line.messagingApi.MessagingApiClient({channelAccessToken:config.channelAccessToken});
+// สร้าง Client แบบเวอร์ชั่นใหม่
+const client = new line.messagingApi.MessagingApiClient({
+  channelAccessToken: config.channelAccessToken
+});
 
-// Webhook endpoint
 app.post('/webhook', line.middleware(config), (req, res) => {
   Promise
     .all(req.body.events.map(handleEvent))
-    .then(result => res.json(result));
+    .then(result => res.json(result))
+    .catch((err) => {
+      console.error(err);
+      res.status(500).end();
+    });
 });
 
-// ฟังก์ชันหลัก
 async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') {
     return null;
   }
 
-  const userText = event.message.text;
+  const userText = event.message.text.trim();
 
-  // เมนูหลัก
+  // สร้างตัวแปรสำหรับข้อความที่จะตอบกลับ
+  let replyText = '';
+
   if (userText === 'เมนู' || userText === 'menu') {
-    return client.replyMessage({replyToken: event.replyToken,messages: [{
+    replyText = `กรุณาเลือกเมนู:\n1. แจ้งเหตุ\n2. แจ้งความ\n3. ตรวจสอบคดี\n4. จองคิว\n5. ร้องเรียน`;
+  } else if (userText === 'แจ้งเหตุ') {
+    replyText = `กรุณาระบุรายละเอียด:\n- สถานที่\n- เวลา\n- เหตุการณ์\n📍 ส่งโลเคชันและรูปภาพได้`;
+  } else if (userText === 'แจ้งความ') {
+    replyText = `เลือกประเภท:\n1. ของหาย\n2. ถูกโกงออนไลน์\n3. เอกสารหาย`;
+  } else if (userText.startsWith('คดี')) {
+    replyText = `🔎 สถานะคดี:\nอยู่ระหว่างสอบสวน\nเจ้าหน้าที่: ร.ต.อ.สมชาย`;
+  } else {
+    replyText = `คุณพิมพ์ว่า: ${userText}\nพิมพ์ "เมนู" เพื่อเริ่มใช้งาน`;
+  }
+
+  // การส่งข้อความแบบเวอร์ชั่นใหม่ (ต้องมี messages เป็น Array)
+  return client.replyMessage({
+    replyToken: event.replyToken,
+    messages: [{
       type: 'text',
-      text: `กรุณาเลือกเมนู:
-1. แจ้งเหตุ
-2. แจ้งความ
-3. ตรวจสอบคดี
-4. จองคิว
-5. ร้องเรียน`
+      text: replyText
     }]
-  });
-  }
-
-  // แจ้งเหตุ
-  if (userText === 'แจ้งเหตุ') {
-    return client.replyMessage(event.replyToken, {
-      type: 'text',
-      text: `กรุณาระบุรายละเอียด:
-- สถานที่
-- เวลา
-- เหตุการณ์
-
-📍 ส่งโลเคชันและรูปภาพได้`
-    });
-  }
-
-  // แจ้งความ
-  if (userText === 'แจ้งความ') {
-    return client.replyMessage(event.replyToken, {
-      type: 'text',
-      text: `เลือกประเภท:
-1. ของหาย
-2. ถูกโกงออนไลน์
-3. เอกสารหาย`
-    });
-  }
-
-  // ตรวจสอบคดี
-  if (userText.startsWith('คดี')) {
-    return client.replyMessage(event.replyToken, {
-      type: 'text',
-      text: `🔎 สถานะคดี:
-อยู่ระหว่างสอบสวน
-เจ้าหน้าที่: ร.ต.อ.สมชาย`
-    });
-  }
-
-  // จองคิว
-  if (userText === 'จองคิว') {
-    return client.replyMessage(event.replyToken, {
-      type: 'text',
-      text: `เลือกบริการ:
-1. แจ้งความ
-2. ขอใบรับรองความประพฤติ`
-    });
-  }
-
-  // ร้องเรียน
-  if (userText === 'ร้องเรียน') {
-    return client.replyMessage(event.replyToken, {
-      type: 'text',
-      text: `กรุณาระบุรายละเอียดร้องเรียน
-📎 แนบหลักฐานได้`
-    });
-  }
-
-  // Default
-  return client.replyMessage(event.replyToken, {
-    type: 'text',
-    text: 'พิมพ์ "เมนู" เพื่อเริ่มใช้งาน'
   });
 }
 
- const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
 });
