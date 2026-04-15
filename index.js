@@ -28,7 +28,7 @@ async function handleEvent(event) {
 
   // เมนูหลัก
   if (userText === 'เมนู' || userText === 'menu') {
-    return client.replyMessage(event.replyToken, {
+    return client.replyMessage({replyToken: event.replyToken,messages: [{
       type: 'text',
       text: `กรุณาเลือกเมนู:
 1. แจ้งเหตุ
@@ -36,7 +36,8 @@ async function handleEvent(event) {
 3. ตรวจสอบคดี
 4. จองคิว
 5. ร้องเรียน`
-    });
+    }]
+  });
   }
 
   // แจ้งเหตุ
