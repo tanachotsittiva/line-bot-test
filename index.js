@@ -9,7 +9,7 @@ const config = {
   channelSecret: process.env.CHANNEL_SECRET
 };
 
-const client = new line.Client(config);
+const client = new line.messagingApi.MessagingApiClient({channelAccessToken});
 
 // Webhook endpoint
 app.post('/webhook', line.middleware(config), (req, res) => {
