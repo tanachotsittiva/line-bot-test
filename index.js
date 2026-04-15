@@ -4,59 +4,89 @@ const line = require('@line/bot-sdk');
 
 const app = express();
 
+// ตั้งค่ารหัสผ่าน (ดึงมาจาก Environment Variables ใน Render)
 const config = {
-  channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN,
-  channelSecret: process.env.CHANNEL_SECRET
+    channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN,
+    channelSecret: process.env.CHANNEL_SECRET
 };
 
-// สร้าง Client แบบเวอร์ชั่นใหม่
+// สร้าง Client สำหรับเชื่อมต่อกับ LINE
 const client = new line.messagingApi.MessagingApiClient({
-  channelAccessToken: config.channelAccessToken
+    channelAccessToken: config.channelAccessToken
 });
 
+// ส่วนของ Webhook สำหรับรับข้อความจาก LINE
 app.post('/webhook', line.middleware(config), (req, res) => {
-  Promise
-    .all(req.body.events.map(handleEvent))
-    .then(result => res.json(result))
-    .catch((err) => {
-      console.error(err);
-      res.status(500).end();
-    });
+    Promise
+        .all(req.body.events.map(handleEvent))
+        .then((result) => res.json(result))
+        .catch((err) => {
+            console.error('Error at webhook:', err);
+            res.status(500).end();
+        });
 });
 
+// ฟังก์ชันหลักในการจัดการข้อความ
 async function handleEvent(event) {
-  if (event.type !== 'message' || event.message.type !== 'text') {
-    return null;
-  }
+    // รับเฉพาะข้อความที่เป็น Text (ตัวอักษร)
+    if (event.type !== 'message' || event.message.type !== 'text') {
+        return null;
+    }
 
-  const userText = event.message.text.trim();
+    const userText = event.message.text.trim();
+    let replyText = "";
 
-  // สร้างตัวแปรสำหรับข้อความที่จะตอบกลับ
-  let replyText = '';
+    // ระบบ Logic: ใช้ if / else if เพื่อให้เลือกตอบเพียงอย่างเดียว
+    if (userText === 'เมนู' || userText === 'menu' || userText === 'Menu') {
+        replyText = `ยินดีต้อนรับครับหมวดบอสยินดีรับใช้
+กรุณาเลือกเมนูที่ต้องการ:
+1. แจ้งเหตุ
+2. แจ้งความ
+3. ตรวจสอบคดี
+4. จองคิว
+5. ร้องเรียน`;
+    } 
+    else if (userText === 'แจ้งเหตุ' || userText === '1') {
+        replyText = `🚨 แจ้งเหตุฉุกเฉิน:
+กรุณาระบุรายละเอียดเหตุการณ์ และส่งตำแหน่งที่เกิดเหตุ (Location) หรือรูปภาพหลักฐานมาได้เลยครับ`;
+    } 
+    else if (userText === 'แจ้งความ' || userText === '2') {
+        replyText = `📄 บริการแจ้งความ:
+ท่านต้องการแจ้งความเรื่องใดครับ?
+- ของหาย
+- ถูกโกงออนไลน์
+- ทะเลาะวิวาท`;
+    } 
+    else if (userText === 'ตรวจสอบคดี' || userText === '3') {
+        replyText = `🔎 ตรวจสอบคดี:
+กรุณาพิมพ์หมายเลขคดี หรือชื่อผู้แจ้ง เพื่อดำเนินการตรวจสอบครับ`;
+    } 
+    else if (userText === 'จองคิว' || userText === '4') {
+        replyText = `📅 จองคิวเข้าพบ:
+กรุณาระบุ วัน/เดือน/เวลา ที่ต้องการ และระบุชื่อเจ้าหน้าที่ที่ต้องการเข้าพบครับ`;
+    } 
+    else if (userText === 'ร้องเรียน' || userText === '5') {
+        replyText = `📢 ร้องเรียนการปฏิบัติงาน:
+กรุณาระบุรายละเอียดข้อร้องเรียนของท่าน ข้อมูลนี้จะถูกเก็บเป็นความลับครับ`;
+    } 
+    else {
+        // กรณีพิมพ์คำอื่นๆ ที่ไม่มีในเมนู
+        replyText = `ขออภัยครับ ผมไม่เข้าใจคำสั่ง "${userText}" 
+กรุณาพิมพ์คำว่า "เมนู" เพื่อดูรายการที่ต้องการครับ`;
+    }
 
-  if (userText === 'เมนู' || userText === 'menu') {
-    replyText = `กรุณาเลือกเมนู:\n1. แจ้งเหตุ\n2. แจ้งความ\n3. ตรวจสอบคดี\n4. จองคิว\n5. ร้องเรียน`;
-  } else if (userText === 'แจ้งเหตุ') {
-    replyText = `กรุณาระบุรายละเอียด:\n- สถานที่\n- เวลา\n- เหตุการณ์\n📍 ส่งโลเคชันและรูปภาพได้`;
-  } else if (userText === 'แจ้งความ') {
-    replyText = `เลือกประเภท:\n1. ของหาย\n2. ถูกโกงออนไลน์\n3. เอกสารหาย`;
-  } else if (userText.startsWith('คดี')) {
-    replyText = `🔎 สถานะคดี:\nอยู่ระหว่างสอบสวน\nเจ้าหน้าที่: ร.ต.อ.สมชาย`;
-  } else {
-    replyText = `คุณพิมพ์ว่า: ${userText}\nพิมพ์ "เมนู" เพื่อเริ่มใช้งาน`;
-  }
-
-  // การส่งข้อความแบบเวอร์ชั่นใหม่ (ต้องมี messages เป็น Array)
-  return client.replyMessage({
-    replyToken: event.replyToken,
-    messages: [{
-      type: 'text',
-      text: replyText
-    }]
-  });
+    // ส่งข้อความตอบกลับหาผู้ใช้
+    return client.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{
+            type: 'text',
+            text: replyText
+        }]
+    });
 }
 
+// ตั้งค่า Port สำหรับ Render
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+    console.log(`Server is running on port ${PORT}`);
 });
