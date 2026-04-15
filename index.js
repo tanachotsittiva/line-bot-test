@@ -4,8 +4,8 @@ const line = require('@line/bot-sdk');
 const app = express();
 
 const config = {
-  channelAccessToken: 'ใส่_ACCESS_TOKEN_ตรงนี้',
-  channelSecret: 'ใส่_SECRET_ตรงนี้'
+  channelAccessToken: '2009805933',
+  channelSecret: '9208e080c9a3319b818181c4634cc6fa'
 };
 
 app.post('/webhook', line.middleware(config), (req, res) => {
