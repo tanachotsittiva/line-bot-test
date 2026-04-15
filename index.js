@@ -27,7 +27,7 @@ function handleEvent(event) {
     text: 'คุณพิมพ์ว่า: ' + event.message.text
   });
 }
-
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log('Server is running on port ${PORT}');
 });
