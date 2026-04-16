@@ -13,7 +13,7 @@ const client = new line.messagingApi.MessagingApiClient({
     channelAccessToken: config.channelAccessToken
 });
 
-// ตั้งค่า AI Gemini
+// เชื่อมต่อสมอง AI Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
@@ -27,85 +27,59 @@ app.post('/webhook', line.middleware(config), (req, res) => {
 });
 
 async function handleEvent(event) {
-    // --- 1. ระบบบันทึกนัดหมาย (Postback จากปฏิทิน) ---
+    // 1. จัดการปฏิทินจองคิว (Postback)
     if (event.type === 'postback') {
         const selectedDate = event.postback.params.datetime || event.postback.params.date;
         return client.replyMessage({
             replyToken: event.replyToken,
-            messages: [{ 
-                type: 'text', 
-                text: `✅ บันทึกนัดหมายสำเร็จ!\n📅 วันที่นัด: ${selectedDate}\n👮‍♂️ หมวดบอสเตรียมสแตนด์บายรอพบท่านตามเวลานัดครับ` 
+            messages: [{ type: 'text', text: `✅ บันทึกนัดหมายสำเร็จ!\n📅 วันที่นัด: ${selectedDate}\n👮‍♂️ หมวดบอสเตรียมรอพบท่านตามเวลาครับ` }]
+        });
+    }
+
+    // รับเฉพาะข้อความตัวอักษร
+    if (event.type !== 'message' || event.message.type !== 'text') return null;
+    const userText = event.message.text.trim();
+
+    // 2. ระบบเมนูหลัก (ใช้ if / else if เพื่อความแม่นยำ)
+    if (userText === 'เมนู' || userText === 'menu') {
+        const menuMsg = `👮‍♂️ สวัสดีครับ! เลือกบริการที่ต้องการช่วยเหลือครับ:\n\n🚨 1. แจ้งเหตุ (ส่งพิกัด/รูปมาได้เลย)\n📄 2. แจ้งความ (ดูขั้นตอนการแจ้ง)\n📅 3. จองคิว (เลือกเวลาเข้าพบ)\n📢 4. ร้องเรียน\n\n✨ หรือคุยกับหมวดบอสได้เลยครับ`;
+        return client.replyMessage({
+            replyToken: event.replyToken,
+            messages: [{ type: 'text', text: menuMsg }]
+        });
+    } 
+    else if (userText === 'แจ้งความ') {
+        const reportMsg = `📄 **ขั้นตอนการแจ้งความ**\n\n1️⃣ เตรียมบัตรประชาชนและหลักฐาน\n2️⃣ แจ้งรายละเอียดเหตุการณ์ที่เกิดขึ้น\n3️⃣ ท่านสามารถพิมพ์รายละเอียดทิ้งไว้ที่นี่\n\n🕵️‍♂️ หรือกดเมนู "จองคิว" เพื่อเข้ามาพบหมวดบอสที่สถานีได้ครับ`;
+        return client.replyMessage({
+            replyToken: event.replyToken,
+            messages: [{ type: 'text', text: reportMsg }]
+        });
+    }
+    else if (userText === 'แจ้งเหตุ') {
+        return client.replyMessage({
+            replyToken: event.replyToken,
+            messages: [{ type: 'text', text: `🚨 **แจ้งเหตุฉุกเฉิน**\nกรุณาส่งพิกัด📍 หรือรูปภาพ📸 มาได้เลยครับ หมวดบอสจะรีบประสานงานให้ทันที!` }]
+        });
+    }
+    else if (userText === 'จองคิว') {
+        return client.replyMessage({
+            replyToken: event.replyToken,
+            messages: [{
+                type: 'template',
+                altText: 'กรุณาเลือกวันเวลาเข้าพบ',
+                template: {
+                    type: 'buttons',
+                    title: '📅 นัดหมายเข้าพบ',
+                    text: 'กรุณาเลือกวันและเวลาที่สะดวกครับ',
+                    actions: [{ type: 'datetimepicker', label: 'เลือกวัน/เวลา 🕒', data: 'action=booking', mode: 'datetime' }]
+                }
             }]
         });
     }
-
-    // --- 2. ระบบรับหลักฐาน (รูปภาพ/พิกัด) ---
-    if (event.type === 'message' && event.message.type === 'image') {
-        return client.replyMessage({
-            replyToken: event.replyToken,
-            messages: [{ type: 'text', text: '📸 ได้รับรูปภาพหลักฐานเรียบร้อยครับ!\n🕵️‍♂️ หมวดบอสจะรีบประสานงานฝ่ายที่เกี่ยวข้องให้ทันที' }]
-        });
-    }
-
-    if (event.type === 'message' && event.message.type === 'location') {
-        return client.replyMessage({
-            replyToken: event.replyToken,
-            messages: [{ type: 'text', text: `📍 ได้รับพิกัดแจ้งเหตุแล้ว!\n🏠 ที่อยู่: ${event.message.address}\n🚔 กำลังวิทยุแจ้งรถสายตรวจที่ใกล้ที่สุดให้ครับ` }]
-        });
-    }
-
-    // --- 3. ระบบจัดการข้อความ (Text Message) ---
-    if (event.type === 'message' && event.message.type === 'text') {
-        const userText = event.message.text.trim();
-
-        // เมนู: เรียกดูรายการทั้งหมด
-        if (userText === 'เมนู' || userText === 'menu') {
-            const menuText = `👮‍♂️ สวัสดีครับ! ผม "หมวดบอส" ยินดีรับใช้ประชาชนครับ\n\n` +
-                             `กรุณาเลือกบริการที่ต้องการช่วยเหลือ:\n` +
-                             `🚨 1. แจ้งเหตุ (ส่งรูปหรือพิกัดมาได้เลย)\n` +
-                             `📄 2. แจ้งความ (ระบุเรื่องที่โดนกระทำ)\n` +
-                             `📅 3. จองคิว (เลือกวันเวลาเข้าพบ)\n` +
-                             `📢 4. ร้องเรียนการปฏิบัติงาน\n\n` +
-                             `✨ หรือพิมพ์พูดคุยกับผมได้โดยตรงเลยครับ`;
-            return client.replyMessage({
-                replyToken: event.replyToken,
-                messages: [{ type: 'text', text: menuText }]
-            });
-        }
-
-        // เมนู: แจ้งเหตุ
-        if (userText === 'แจ้งเหตุ') {
-            return client.replyMessage({
-                replyToken: event.replyToken,
-                messages: [{ type: 'text', text: '🚨 แจ้งเหตุฉุกเฉิน:\nกรุณากดปุ่ม "+" แล้วเลือก "Location" เพื่อส่งพิกัด หรือส่งรูปภาพเหตุการณ์มาได้เลยครับ' }]
-            });
-        }
-
-        // เมนู: จองคิว (แสดงปฏิทิน)
-        if (userText === 'จองคิว') {
-            return client.replyMessage({
-                replyToken: event.replyToken,
-                messages: [{
-                    type: 'template',
-                    altText: 'กรุณาเลือกวันเวลาเข้าพบ',
-                    template: {
-                        type: 'buttons',
-                        title: '📅 นัดหมายเข้าพบ',
-                        text: 'กรุณากดปุ่มด้านล่างเพื่อเลือกวันและเวลาครับ',
-                        actions: [{
-                            type: 'datetimepicker',
-                            label: 'เลือกวัน/เวลา 🕒',
-                            data: 'action=booking',
-                            mode: 'datetime'
-                        }]
-                    }
-                }]
-            });
-        }
-
-        // --- ระบบ AI: ถ้าไม่ใช่คำสั่งเมนู ให้ Gemini ตอบกลับ ---
+    // 3. ถ้าไม่ใช่คำสั่งเมนู ให้ AI (Gemini) เป็นคนตอบ
+    else {
         try {
-            const prompt = `คุณคือ "หมวดบอส" ตำรวจไทยผู้ช่วยประชาชนที่สุภาพ เป็นกันเอง และใช้อีโมจิเก่ง ตอบคำถามนี้: "${userText}"`;
+            const prompt = `คุณคือ "หมวดบอส" ตำรวจไทยที่สุภาพ ใจดี และใช้อีโมจิเก่ง ตอบประชาชนคนนี้: ${userText}`;
             const result = await model.generateContent(prompt);
             const response = await result.response;
             return client.replyMessage({
@@ -116,7 +90,7 @@ async function handleEvent(event) {
             console.error("AI Error:", error);
             return client.replyMessage({
                 replyToken: event.replyToken,
-                messages: [{ type: 'text', text: "🚔 ขออภัยครับ สัญญาณวิทยุขัดข้อง รบกวนลองใหม่อีกครั้ง หรือพิมพ์ 'เมนู' ครับ" }]
+                messages: [{ type: 'text', text: "🚔 ขออภัยครับ หมวดติดภารกิจด่วน รบกวนลองใหม่อีกครั้ง หรือพิมพ์ 'เมนู' ครับ" }]
             });
         }
     }
