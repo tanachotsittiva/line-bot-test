@@ -26,91 +26,58 @@ app.post('/webhook', line.middleware(config), (req, res) => {
 });
 
 async function handleEvent(event) {
-    // --- 1. จัดการการเลือกวันที่ (Postback) ---
+    // 1. จัดการ Postback (จองคิวสำเร็จ)
     if (event.type === 'postback') {
         const selectedDate = event.postback.params.datetime || event.postback.params.date;
         return client.replyMessage({
             replyToken: event.replyToken,
-            messages: [{ type: 'text', text: `✅ บันทึกนัดหมายเรียบร้อย!\n📅 วันที่: ${selectedDate}\n👮‍♂️ แล้วพบกันนะครับ หมวดบอสเตรียมสแตนด์บายรอครับ` }]
+            messages: [{ type: 'text', text: ✅ บันทึกนัดหมายเรียบร้อย!\n📅 วันที่: ${selectedDate}\n👮‍♂️ แล้วพบกันนะครับ หมวดบอสเตรียมสแตนด์บายรอครับ }]
         });
     }
 
-    // --- 2. จัดการรูปภาพ (Image) ---
-    if (event.type === 'message' && event.message.type === 'image') {
+    if (event.type !== 'message' || event.message.type !== 'text') return null;
+    const userText = event.message.text.trim();
+
+    // 2. แยกเงื่อนไขคำสั่งตายตัว (เพื่อไม่ให้หลุดไปหา AI แล้ว Error)
+    if (userText === 'เมนู' || userText === 'menu') {
         return client.replyMessage({
             replyToken: event.replyToken,
-            messages: [{ type: 'text', text: '📸 ได้รับรูปภาพหลักฐานเรียบร้อยครับ! \n🕵️‍♂️ หมวดบอสจะรีบส่งเรื่องตรวจสอบให้ทันทีครับ' }]
+            messages: [{ type: 'text', text: 👮‍♂️ เลือกเมนูที่ต้องการช่วยเหลือครับ:\n🚨 แจ้งเหตุ\n📄 แจ้งความ\n📅 จองคิว\n📢 ร้องเรียน }]
         });
     }
 
-    // --- 3. จัดการพิกัด (Location) ---
-    if (event.type === 'message' && event.message.type === 'location') {
+    if (userText === 'แจ้งเหตุ') {
         return client.replyMessage({
             replyToken: event.replyToken,
-            messages: [{ type: 'text', text: `📍 ได้รับพิกัดแจ้งเหตุแล้ว!\n🏠 สถานที่: ${event.message.address}\n🚔 กำลังประสานรถสายตรวจที่ใกล้ที่สุดให้ครับ!` }]
+            messages: [{ type: 'text', text: 🚨 แจ้งเหตุฉุกเฉิน:\nกรุณาส่งพิกัด (Location) หรือรูปภาพหลักฐานมาได้เลยครับ หมวดบอสจะรีบประสานงานให้ทันที! }]
         });
     }
 
-    // --- 4. จัดการข้อความ (Text) ---
-    if (event.type === 'message' && event.message.type === 'text') {
-        const userText = event.message.text.trim();
-        
-        // --- เมนูหลัก ---
-        if (userText === 'เมนู' || userText === 'menu') {
-            return client.replyMessage({
-                replyToken: event.replyToken,
-                messages: [{ 
-                    type: 'text', 
-                    text: `👮‍♂️ สวัสดีครับ! ผม "หมวดบอส" ยินดีรับใช้ประชาชนครับ\n\nกรุณาเลือกเมนูที่ต้องการช่วยเหลือ:\n🚨 1. แจ้งเหตุ (ส่งรูป/พิกัดมาได้เลย)\n🗓️ 2. จองคิวเข้าพบ\n📑 3. ร้องเรียนการทำงาน\n\nหรือพิมพ์คุยกับผมได้โดยตรงเลยครับ ✨` 
-                }]
-            });
-        }
+    if (userText === 'แจ้งความ') {
+        return client.replyMessage({
+            replyToken: event.replyToken,
+            messages: [{ type: 'text', text: 📄 ท่านต้องการแจ้งความเรื่องอะไรครับ?\n(เช่น ของหาย, โดนโกง, ทะเลาะวิวาท) พิมพ์รายละเอียดมาได้เลย }]
+        });
+    }
 
-        // --- ระบบปฏิทินจองคิว ---
-        if (userText === 'จองคิว') {
-            return client.replyMessage({
-                replyToken: event.replyToken,
-                messages: [{
-                    type: 'template',
-                    altText: 'กรุณาเลือกวันเวลาเข้าพบ',
-                    template: {
-                        type: 'buttons',
-                        thumbnailImageUrl: 'https://images.unsplash.com/photo-1506784983877-45594efa4cbe?auto=format&fit=crop&q=80&w=500', // รูปตัวอย่างปฏิทิน
-                        title: '📅 นัดหมายเข้าพบ',
-                        text: 'กรุณากดปุ่มด้านล่างเพื่อเลือกวันและเวลาครับ',
-                        actions: [{
-                            type: 'datetimepicker',
-                            label: 'เลือกวัน/เวลา 🕒',
-                            data: 'action=booking',
-                            mode: 'datetime'
-                        }]
-                    }
-                }]
-            });
-        }
+    if (userText === 'จองคิว') {
+        return sendBookingPicker(event.replyToken); // เรียกฟังก์ชันปฏิทินเดิมของคุณ
+    }
 
-        // --- ระบบ AI (Gemini) ---
-        try {
-            const prompt = `คุณคือ "หมวดบอส" ตำรวจไทยผู้ช่วยประชาชนที่แสนดี สุภาพ ขี้เล่นเล็กน้อยและใช้อีโมจิเก่ง 
-            ตอบคำถามนี้: "${userText}" 
-            (คำแนะนำ: ใช้ภาษาที่เป็นกันเอง ใส่ใจประชาชน และปิดท้ายด้วยความเต็มใจช่วย)`;
-            
-            const result = await model.generateContent(prompt);
-            const response = await result.response;
-            
-            return client.replyMessage({
-                replyToken: event.replyToken,
-                messages: [{ type: 'text', text: response.text() }]
-            });
-        } catch (error) {
-            console.error("AI Error:", error);
-            return client.replyMessage({
-                replyToken: event.replyToken,
-                messages: [{ type: 'text', text: "🚔 หมวดบอสขออภัยครับ ตอนนี้สัญญาณวิทยุขัดข้อง รบกวนลองใหม่อีกครั้งนะครับ!" }]
-            });
-        }
+    // 3. ถ้าไม่ใช่คำสั่งข้างบน ให้ AI (Gemini) ตอบ
+    try {
+        const prompt = `คุณคือ "หมวดบอส" ตำรวจไทยที่สุภาพและเป็นมิตร ตอบคำถามนี้: ${userText}`;
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return client.replyMessage({
+            replyToken: event.replyToken,
+            messages: [{ type: 'text', text: response.text() }]
+        });
+    } catch (error) {
+        console.error("AI Error:", error);
+        return client.replyMessage({
+            replyToken: event.replyToken,
+            messages: [{ type: 'text', text: "🚔 ขออภัยครับ หมวดติดภารกิจด่วน รบกวนลองใหม่อีกครั้ง หรือพิมพ์ 'เมนู' ครับ" }]
+        });
     }
 }
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 หมวดบอสออนไลน์บนพอร์ต ${PORT}`));
