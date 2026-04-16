@@ -15,7 +15,7 @@ const client = new line.messagingApi.MessagingApiClient({
 
 // เชื่อมต่อสมอง AI Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
 app.post('/webhook', line.middleware(config), (req, res) => {
     Promise.all(req.body.events.map(handleEvent))
