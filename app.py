@@ -59,9 +59,12 @@ def get_relevant_laws(query):
         vectorizer = TfidfVectorizer()
         tfidf_matrix = vectorizer.fit_transform(search_list + [clean_query])
         cosine_sim = cosine_similarity(tfidf_matrix[-1], tfidf_matrix[:-1])
+        
+        # ปรับเหลือแค่ 1-2 มาตราที่คะแนนสูงที่สุดเท่านั้น
         top_indices = cosine_sim.argsort()[0][-2:][::-1]
         
-        results = [LAWS_LIST[i] for i in top_indices if cosine_sim[0][i] > 0.1]
+        # เพิ่มความเข้มงวดของคะแนน (Threshold) จาก 0.1 เป็น 0.3
+        results = [LAWS_LIST[i] for i in top_indices if cosine_sim[0][i] > 0.3]
         return "\n\n".join(results)
     except:
         return ""
@@ -95,6 +98,8 @@ def handle_text(event):
         "2. จัดรูปแบบข้อความให้อ่านง่าย เว้นบรรทัดให้สวยงาม "
         "3. หากมีข้อมูลกฎหมายที่แนบไปให้ ให้สรุปและอ้างอิงเลขมาตราด้วย 📄 "
         "4. หากไม่ทราบแน่ชัด ให้แนะนำให้ติดต่อ สน. ใกล้บ้านด้วยความสุภาพครับ"
+        "5. ใช้เฉพาะข้อกฎหมายที่แนบไปให้เท่านั้นในการระบุเลขมาตรา\n"
+        "6. 'ห้าม' สร้างเลขมาตราหรือเนื้อหากฎหมายขึ้นมาเองเด็ดขาด,หากในข้อมูลไม่มี ให้ตอบว่า 'เรื่องนี้หมวดยังไม่มีข้อมูลแน่ชัดครับ'\n"
     )
 
     messages = [{"role": "system", "content": system_prompt}]
