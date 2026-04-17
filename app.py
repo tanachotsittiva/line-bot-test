@@ -1,26 +1,27 @@
 import os
+import base64
 import PyPDF2
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from linebot.models import MessageEvent, TextMessage, TextSendMessage, ImageMessage
 from groq import Groq
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 app = Flask(__name__)
 
-# 1. ตั้งค่าเชื่อมต่อ API (ดึงจาก Environment Variables ใน Render)
+# --- 1. ตั้งค่าการเชื่อมต่อ API ---
 line_bot_api = LineBotApi(os.getenv('LINE_CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.getenv('LINE_CHANNEL_SECRET'))
 groq_client = Groq(api_key=os.getenv('GROQ_API_KEY'))
 
-# 2. ระบบความจำระยะสั้น (Chat History)
+# --- 2. ระบบความจำและฐานข้อมูล ---
 chat_histories = {}
+LAWS_LIST = []
 
-# 3. ฟังก์ชันสำหรับแกะข้อความจากไฟล์ PDF
 def load_law_from_pdf(file_path):
-    law_sentences = []
+    sentences = []
     try:
         if os.path.exists(file_path):
             with open(file_path, "rb") as f:
@@ -28,37 +29,40 @@ def load_law_from_pdf(file_path):
                 for page in pdf_reader.pages:
                     text = page.extract_text()
                     if text:
-                        # ตัดข้อความออกเป็นบรรทัด หรือประโยค เพื่อให้ง่ายต่อการค้นหา
-                        lines = [line.strip() for line in text.split('\n') if len(line.strip()) > 20]
-                        law_sentences.extend(lines)
-            print(f"📖 โหลดข้อมูลกฎหมายเรียบร้อยแล้ว: {len(law_sentences)} บรรทัด")
+                        # แยกเป็นบรรทัดและกรองบรรทัดที่สั้นเกินไปออก
+                        lines = [l.strip() for l in text.split('\n') if len(l.strip()) > 20]
+                        sentences.extend(lines)
+            print(f"📖 โหลดกฎหมายสำเร็จ: {len(sentences)} บรรทัด")
         else:
-            print("⚠️ ไม่พบไฟล์ law_book.pdf ระบบจะทำงานโดยไม่มีฐานข้อมูลเสริม")
+            print("⚠️ ไม่พบไฟล์ law_book.pdf")
     except Exception as e:
-        print(f"❌ Error reading PDF: {e}")
-    return law_sentences
+        print(f"❌ Error loading PDF: {e}")
+    return sentences
 
-# โหลดข้อมูลกฎหมายเตรียมไว้ใน Memory ตั้งแต่ตอน Start Server
+# โหลด PDF เข้า Memory ทันทีที่รันโปรแกรม
 LAWS_LIST = load_law_from_pdf("law_book.pdf")
 
-# 4. ฟังก์ชันค้นหามาตรากฎหมายที่เกี่ยวข้อง (RAG Core)
-def get_relevant_laws(user_query, top_n=3):
-    if not LAWS_LIST:
-        return ""
+# --- 3. ฟังก์ชันเสริม (Helper Functions) ---
+
+def get_relevant_laws(query):
+    """ ค้นหามาตราที่เกี่ยวข้องจาก PDF """
+    if not LAWS_LIST: return ""
     try:
-        # ใช้เทคนิค TF-IDF เพื่อเปรียบเทียบความคล้ายคลึงของข้อความ
         vectorizer = TfidfVectorizer()
-        tfidf_matrix = vectorizer.fit_transform(LAWS_LIST + [user_query])
+        tfidf_matrix = vectorizer.fit_transform(LAWS_LIST + [query])
         cosine_sim = cosine_similarity(tfidf_matrix[-1], tfidf_matrix[:-1])
-        
-        # ดึงลำดับของประโยคที่มีความคล้ายที่สุด
-        top_indices = cosine_sim.argsort()[0][-top_n:][::-1]
-        relevant_text = "\n".join([LAWS_LIST[i] for i in top_indices if cosine_sim[0][i] > 0.1])
-        return relevant_text
+        top_indices = cosine_sim.argsort()[0][-3:][::-1]
+        return "\n".join([LAWS_LIST[i] for i in top_indices if cosine_sim[0][i] > 0.1])
     except:
         return ""
 
-# 5. ระบบรับ Webhook จาก LINE
+def encode_image(image_path):
+    """ แปลงรูปเป็น Base64 สำหรับ Groq Vision """
+    with open(image_path, "rb") as image_file:
+        return base64.b64encode(image_file.read()).decode('utf-8')
+
+# --- 4. เส้นทาง Webhook สำหรับ LINE ---
+
 @app.route("/callback", methods=['POST'])
 def callback():
     signature = request.headers['X-Line-Signature']
@@ -69,57 +73,81 @@ def callback():
         abort(400)
     return 'OK'
 
-# 6. ส่วนประมวลผลข้อความและการตอบกลับ
+# --- 5. จัดการเมื่อได้รับ "ข้อความตัวอักษร" (AI + RAG + Memory) ---
+
 @handler.add(MessageEvent, message=TextMessage)
-def handle_message(event):
+def handle_text(event):
     user_id = event.source.user_id
     user_message = event.message.text
 
-    # จัดการประวัติการสนทนา
     if user_id not in chat_histories:
         chat_histories[user_id] = []
 
-    # --- ขั้นตอน RAG: ค้นหาข้อความใน PDF ---
+    # ค้นหากฎหมายที่เกี่ยวข้อง
     context_law = get_relevant_laws(user_message)
 
-    # --- ขั้นตอน AI: สร้างคำตอบ ---
     system_prompt = (
-        "คุณคือ 'หมวดบอส' ตำรวจไทยผู้ใจดีและรอบรู้กฎหมาย สุภาพมากและใช้ Emoji 🚔✨ "
-        "จงตอบคำถามประชาชนโดยใช้ข้อมูลกฎหมายที่แนบมาให้ (ถ้ามี) "
-        "หากข้อมูลในกฎหมายระบุไว้ ให้ยึดตามนั้นและบอกเลขมาตราด้วย "
-        "หากไม่แน่ใจให้แนะนำให้พบพนักงานสอบสวนที่สถานีตำรวจใกล้บ้าน"
+        "คุณคือ 'หมวดบอส' ตำรวจไทยใจดี สุภาพมาก และรอบรู้กฎหมาย 🚔✨ "
+        "จงใช้ข้อมูลกฎหมายที่แนบมาประกอบการตอบ (ถ้ามี) พร้อมระบุเลขมาตรา "
+        "หากไม่แน่ใจให้แนะนำให้ติดต่อสถานีตำรวจใกล้บ้าน"
     )
 
-    # สร้างชุดข้อความ (System + Context + History + User Message)
     messages = [{"role": "system", "content": system_prompt}]
     
-    # ใส่ประวัติย้อนหลัง 3 ข้อความ (เพื่อความลื่นไหล)
+    # ใส่ประวัติการคุยล่าสุด 3 ประโยค
     for hist in chat_histories[user_id][-3:]:
         messages.append(hist)
     
-    # ใส่บริบทกฎหมายที่ค้นเจอจาก PDF เข้าไปในคำถามล่าสุด
-    full_user_input = f"ข้อมูลกฎหมายที่เกี่ยวข้อง:\n{context_law}\n\nคำถาม: {user_message}"
-    messages.append({"role": "user", "content": full_user_input})
+    # รวมคำถามกับข้อมูลกฎหมาย
+    full_input = f"ข้อมูลกฎหมาย:\n{context_law}\n\nคำถาม: {user_message}"
+    messages.append({"role": "user", "content": full_input})
 
     try:
-        # ส่งข้อมูลทั้งหมดให้ Groq AI
         completion = groq_client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=messages
         )
         ai_reply = completion.choices[0].message.content
         
-        # บันทึกลงประวัติการคุย
+        # บันทึกความจำ
         chat_histories[user_id].append({"role": "user", "content": user_message})
         chat_histories[user_id].append({"role": "assistant", "content": ai_reply})
-        
-        # จำกัดขนาดความจำ (ป้องกัน Server หน่วง)
-        if len(chat_histories[user_id]) > 6:
-            chat_histories[user_id] = chat_histories[user_id][-6:]
+    except:
+        ai_reply = "🚔 หมวดเบลอนิดหน่อย รบกวนถามอีกครั้งนะครับ"
 
-    except Exception as e:
-        print(f"Error calling AI: {e}")
-        ai_reply = "🚔 หมวดขออภัยครับ ระบบประมวลผลขัดข้องชั่วคราว รบกวนถามหมวดอีกครั้งนะครับ"
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=ai_reply))
+
+# --- 6. จัดการเมื่อได้รับ "รูปภาพ" (AI Vision) ---
+
+@handler.add(MessageEvent, message=ImageMessage)
+def handle_image(event):
+    message_id = event.message.id
+    message_content = line_bot_api.get_message_content(message_id)
+    temp_path = f"{message_id}.jpg"
+
+    with open(temp_path, 'wb') as f:
+        for chunk in message_content.iter_content():
+            f.write(chunk)
+
+    try:
+        base64_image = encode_image(temp_path)
+        response = groq_client.chat.completions.create(
+            model="llama-3.2-11b-vision-preview", # ใช้โมเดลดูรูปของ Groq
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "หมวดบอสครับ ช่วยวิเคราะห์รูปนี้ในเชิงกฎหมายและให้คำแนะนำด้วยความสุภาพครับ 🚔✨"},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                    ]
+                }
+            ]
+        )
+        ai_reply = response.choices[0].message.content
+    except:
+        ai_reply = "🚔 หมวดมองรูปไม่ชัดเลย รบกวนส่งใหม่อีกครั้งนะครับ"
+    finally:
+        if os.path.exists(temp_path): os.remove(temp_path)
 
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=ai_reply))
 

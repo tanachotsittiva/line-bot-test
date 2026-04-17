@@ -4,3 +4,4 @@ groq
 gunicorn
 scikit-learn
 PyPDF2
+Pillow
