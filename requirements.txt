@@ -3,5 +3,4 @@ line-bot-sdk
 groq
 gunicorn
 scikit-learn
-PyPDF2
 Pillow
