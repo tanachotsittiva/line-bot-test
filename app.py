@@ -3,7 +3,7 @@ import base64
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage, ImageMessage
+from linebot.models import MessageEvent, TextMessage, TextSendMessage, ImageMessage, LocationMessage, LocationSendMessage
 from groq import Groq
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -153,6 +153,30 @@ def handle_image(event):
         if os.path.exists(temp_path): os.remove(temp_path)
 
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=ai_reply))
+
+# --- 8. จัดการเมื่อได้รับ "ตำแหน่งที่ตั้ง" (Location) ---
+@handler.add(MessageEvent, message=LocationMessage)
+def handle_location(event):
+    # ดึงพิกัดที่ User ส่งมา
+    user_lat = event.message.latitude
+    user_lon = event.message.longitude
+    user_address = event.message.address
+
+    # สร้างลิ้งก์ Google Maps สำหรับค้นหา "สถานีตำรวจ" ที่ใกล้พิกัดนั้นที่สุด
+    # เราจะใช้ Search Query ของ Google Maps โดยตรงเพื่อให้แม่นยำและฟรี
+    search_url = f"https://www.google.com/maps/search/สถานีตำรวจ/@{user_lat},{user_lon},15z"
+
+    reply_text = (
+        f"🚔 หมวดได้รับพิกัดแล้วครับ!\n\n"
+        f"📍 พิกัดปัจจุบันของคุณคือ:\n{user_address}\n\n"
+        f"✨ คุณสามารถกดดู 'สถานีตำรวจที่ใกล้ที่สุด' ได้ที่ลิ้งก์นี้เลยครับ:\n{search_url}\n\n"
+        f"เดินทางปลอดภัยนะครับ หากมีเหตุด่วนแจ้งหมวดได้ตลอดครับ! 😊"
+    )
+
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(text=reply_text)
+    )
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
